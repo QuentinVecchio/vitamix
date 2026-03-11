@@ -1,7 +1,10 @@
 /**
  * Generative Search Block
  * Integrates with Cloudflare Worker API to generate dynamic content based on user queries
+ * Uses the EDS block pipeline (buildBlock/decorateBlock/loadBlock) for real block rendering.
  */
+
+import { buildBlock, decorateBlock, loadBlock } from '../../scripts/aem.js';
 
 // API Configuration
 const API_BASE_URL = 'https://vitamix-gen-service.franklin-prod.workers.dev';
@@ -120,28 +123,79 @@ function addGenerationEvent(container, eventType, eventData) {
 }
 
 /**
- * Displays the generated content directly on the page
- * @param {HTMLElement} block - The main block element
- * @param {string} html - Generated HTML content
+ * Displays generated content using real EDS blocks.
+ * Each block is built, decorated, and loaded through the standard EDS pipeline
+ * so existing block CSS/JS applies automatically.
+ * @param {HTMLElement} block - The generative-search block element
+ * @param {Array} generatedBlocks - Array of block definitions from the worker
  */
-function displayGeneratedContent(block, html) {
-  // Clear the block completely
-  block.innerHTML = '';
+async function displayGeneratedContent(block, generatedBlocks) {
+  const section = block.closest('.section');
+  const main = section ? section.parentElement : block.closest('main');
 
-  // Create a container for the generated content
-  const contentContainer = document.createElement('div');
-  contentContainer.className = 'generated-content';
-  contentContainer.innerHTML = html;
+  if (!main) {
+    console.error('[generative-search] Cannot find <main> element');
+    return;
+  }
 
-  // Add a "New Search" button at the bottom
-  const actionBar = document.createElement('div');
-  actionBar.className = 'generated-content-actions';
-  actionBar.innerHTML = `
-    <button class="button" onclick="location.reload()">New Search</button>
-  `;
+  // Build and insert each generated block as a proper EDS section.
+  // We keep the search section visible until all blocks are rendered,
+  // so errors remain visible to the user.
+  const rendered = [];
 
-  block.appendChild(contentContainer);
-  block.appendChild(actionBar);
+  for (const genBlock of generatedBlocks) {
+    try {
+      const newSection = document.createElement('div');
+      newSection.classList.add('section');
+      newSection.dataset.sectionStatus = 'loaded';
+
+      if (genBlock.type === 'default-content') {
+        const wrapper = document.createElement('div');
+        wrapper.classList.add('default-content-wrapper');
+        wrapper.innerHTML = genBlock.content;
+        newSection.appendChild(wrapper);
+      } else {
+        const blockEl = buildBlock(genBlock.type, genBlock.rows);
+        const wrapper = document.createElement('div');
+        wrapper.appendChild(blockEl);
+        newSection.appendChild(wrapper);
+        decorateBlock(blockEl);
+        // eslint-disable-next-line no-await-in-loop
+        await loadBlock(blockEl);
+      }
+
+      main.appendChild(newSection);
+      rendered.push(newSection);
+      console.log(`[generative-search] Rendered ${genBlock.type} block`);
+    } catch (err) {
+      console.error(`[generative-search] Failed to render ${genBlock.type}:`, err);
+    }
+  }
+
+  // Add a "New Search" action section
+  const actionSection = document.createElement('div');
+  actionSection.classList.add('section');
+  actionSection.dataset.sectionStatus = 'loaded';
+  const actionWrapper = document.createElement('div');
+  actionWrapper.classList.add('default-content-wrapper');
+  actionWrapper.style.textAlign = 'center';
+  actionWrapper.style.padding = 'var(--spacing-600) 0';
+  const reloadLink = document.createElement('p');
+  reloadLink.className = 'button-wrapper';
+  reloadLink.innerHTML = '<a class="button secondary" href="#">New Search</a>';
+  reloadLink.querySelector('a').addEventListener('click', (e) => {
+    e.preventDefault();
+    window.location.reload();
+  });
+  actionWrapper.appendChild(reloadLink);
+  actionSection.appendChild(actionWrapper);
+  main.appendChild(actionSection);
+  rendered.push(actionSection);
+
+  // Only hide the search section after blocks rendered successfully
+  if (rendered.length > 0 && section) {
+    section.style.display = 'none';
+  }
 }
 
 /**
@@ -159,8 +213,8 @@ async function handleGeneration(query, resultsContainer, block) {
 
   showStatus(resultsContainer, 'Starting generation...', 'loading');
 
-  // Variable to store the generated HTML
-  let generatedHTML = '';
+  // Variable to store the generated blocks
+  let generatedBlocks = [];
 
   try {
     // Build API URL with query parameter
@@ -197,10 +251,10 @@ async function handleGeneration(query, resultsContainer, block) {
     eventSource.addEventListener('content', (event) => {
       const data = JSON.parse(event.data);
       addGenerationEvent(resultsContainer, 'content', data);
-      showStatus(resultsContainer, 'Finalizing content...', 'loading');
+      showStatus(resultsContainer, 'Building page with real blocks...', 'loading');
 
-      // Store the generated HTML
-      generatedHTML = data.html || '';
+      // Store the generated blocks
+      generatedBlocks = data.blocks || [];
     });
 
     eventSource.addEventListener('complete', (event) => {
@@ -210,11 +264,14 @@ async function handleGeneration(query, resultsContainer, block) {
       // Close the event source
       eventSource.close();
 
-      // Hide loading status and display generated content
+      // Hide loading status and display generated content using EDS blocks
       hideStatus(resultsContainer);
 
-      if (generatedHTML) {
-        displayGeneratedContent(block, generatedHTML);
+      if (generatedBlocks.length > 0) {
+        displayGeneratedContent(block, generatedBlocks).catch((error) => {
+          console.error('Error rendering blocks:', error);
+          showStatus(resultsContainer, 'Error displaying content', 'error');
+        });
       } else {
         showStatus(resultsContainer, 'No content was generated', 'error');
       }
