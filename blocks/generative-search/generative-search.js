@@ -4,8 +4,7 @@
  */
 
 // API Configuration
-// TODO: Update this URL with your deployed Cloudflare Worker URL
-const API_BASE_URL = 'https://vitamix-gen-service.workers.dev';
+const API_BASE_URL = 'https://vitamix-gen-service.franklin-prod.workers.dev';
 
 /**
  * Creates the search interface
