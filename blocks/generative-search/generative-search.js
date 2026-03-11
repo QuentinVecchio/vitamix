@@ -36,20 +36,34 @@ function createSearchInterface(block) {
 }
 
 /**
- * Creates the results container
- * @returns {HTMLElement} Results container element
+ * Creates a floating log widget appended to document.body
+ * @returns {HTMLElement} The widget element
  */
-function createResultsContainer() {
-  const resultsContainer = document.createElement('div');
-  resultsContainer.className = 'results-container hidden';
+function createLogWidget() {
+  const widget = document.createElement('div');
+  widget.className = 'gen-log-widget hidden';
 
-  resultsContainer.innerHTML = `
-    <div class="status-message hidden"></div>
-    <div class="generation-events hidden"></div>
-    <div class="content-preview hidden"></div>
+  widget.innerHTML = `
+    <div class="gen-log-header">
+      <span class="gen-log-title"><span class="spinner hidden"></span>Generation Log</span>
+      <button class="gen-log-toggle" aria-label="Minimize log">&#x2212;</button>
+    </div>
+    <div class="gen-log-body">
+      <div class="status-message hidden"></div>
+      <div class="generation-events hidden"></div>
+    </div>
   `;
 
-  return resultsContainer;
+  // Toggle collapse
+  const toggle = widget.querySelector('.gen-log-toggle');
+  toggle.addEventListener('click', () => {
+    const collapsed = widget.classList.toggle('collapsed');
+    toggle.innerHTML = collapsed ? '&#x2b;' : '&#x2212;';
+    toggle.setAttribute('aria-label', collapsed ? 'Expand log' : 'Minimize log');
+  });
+
+  document.body.appendChild(widget);
+  return widget;
 }
 
 /**
@@ -58,14 +72,17 @@ function createResultsContainer() {
  * @param {string} message - Status message
  * @param {string} type - Message type (loading, error, success)
  */
-function showStatus(container, message, type = 'loading') {
-  const statusEl = container.querySelector('.status-message');
+function showStatus(widget, message, type = 'loading') {
+  const statusEl = widget.querySelector('.status-message');
+  const headerSpinner = widget.querySelector('.gen-log-header .spinner');
   statusEl.className = `status-message ${type}`;
 
   if (type === 'loading') {
     statusEl.innerHTML = `<span class="spinner"></span>${message}`;
+    headerSpinner.classList.remove('hidden');
   } else {
     statusEl.textContent = message;
+    headerSpinner.classList.add('hidden');
   }
 
   statusEl.classList.remove('hidden');
@@ -75,9 +92,11 @@ function showStatus(container, message, type = 'loading') {
  * Hides the status message
  * @param {HTMLElement} container - Results container
  */
-function hideStatus(container) {
-  const statusEl = container.querySelector('.status-message');
+function hideStatus(widget) {
+  const statusEl = widget.querySelector('.status-message');
+  const headerSpinner = widget.querySelector('.gen-log-header .spinner');
   statusEl.classList.add('hidden');
+  headerSpinner.classList.add('hidden');
 }
 
 /**
@@ -86,8 +105,8 @@ function hideStatus(container) {
  * @param {string} eventType - Type of event
  * @param {object} eventData - Event data
  */
-function addGenerationEvent(container, eventType, eventData) {
-  const eventsEl = container.querySelector('.generation-events');
+function addGenerationEvent(widget, eventType, eventData) {
+  const eventsEl = widget.querySelector('.generation-events');
   eventsEl.classList.remove('hidden');
 
   const eventItem = document.createElement('div');
@@ -202,17 +221,17 @@ async function displayGeneratedContent(block, generatedBlocks) {
 /**
  * Handles Server-Sent Events (SSE) from the generation API
  * @param {string} query - User query
- * @param {HTMLElement} resultsContainer - Results container element
+ * @param {HTMLElement} widget - The floating log widget
  * @param {HTMLElement} block - The main block element
  */
-async function handleGeneration(query, resultsContainer, block) {
-  resultsContainer.classList.remove('hidden');
+async function handleGeneration(query, widget, block) {
+  widget.classList.remove('hidden');
+  widget.classList.remove('collapsed');
 
   // Clear previous results
-  resultsContainer.querySelector('.generation-events').innerHTML = '';
-  resultsContainer.querySelector('.content-preview').classList.add('hidden');
+  widget.querySelector('.generation-events').innerHTML = '';
 
-  showStatus(resultsContainer, 'Starting generation...', 'loading');
+  showStatus(widget, 'Starting generation...', 'loading');
 
   // Variable to store the generated blocks
   let generatedBlocks = [];
@@ -227,32 +246,32 @@ async function handleGeneration(query, resultsContainer, block) {
 
     eventSource.addEventListener('intent', (event) => {
       const data = JSON.parse(event.data);
-      addGenerationEvent(resultsContainer, 'intent', data);
-      showStatus(resultsContainer, 'Analyzing your request...', 'loading');
+      addGenerationEvent(widget, 'intent', data);
+      showStatus(widget, 'Analyzing your request...', 'loading');
     });
 
     eventSource.addEventListener('classification', (event) => {
       const data = JSON.parse(event.data);
-      addGenerationEvent(resultsContainer, 'classification', data);
-      showStatus(resultsContainer, 'Determining content type...', 'loading');
+      addGenerationEvent(widget, 'classification', data);
+      showStatus(widget, 'Determining content type...', 'loading');
     });
 
     eventSource.addEventListener('blocks', (event) => {
       const data = JSON.parse(event.data);
-      addGenerationEvent(resultsContainer, 'blocks', data);
-      showStatus(resultsContainer, 'Generating content blocks...', 'loading');
+      addGenerationEvent(widget, 'blocks', data);
+      showStatus(widget, 'Generating content blocks...', 'loading');
     });
 
     eventSource.addEventListener('block', (event) => {
       const data = JSON.parse(event.data);
-      addGenerationEvent(resultsContainer, 'block', data);
-      showStatus(resultsContainer, 'Building your page...', 'loading');
+      addGenerationEvent(widget, 'block', data);
+      showStatus(widget, 'Building your page...', 'loading');
     });
 
     eventSource.addEventListener('content', (event) => {
       const data = JSON.parse(event.data);
-      addGenerationEvent(resultsContainer, 'content', data);
-      showStatus(resultsContainer, 'Building page with real blocks...', 'loading');
+      addGenerationEvent(widget, 'content', data);
+      showStatus(widget, 'Building page with real blocks...', 'loading');
 
       // Store the generated blocks
       generatedBlocks = data.blocks || [];
@@ -260,21 +279,25 @@ async function handleGeneration(query, resultsContainer, block) {
 
     eventSource.addEventListener('complete', (event) => {
       const data = JSON.parse(event.data);
-      addGenerationEvent(resultsContainer, 'complete', data);
+      addGenerationEvent(widget, 'complete', data);
 
       // Close the event source
       eventSource.close();
 
       // Hide loading status and display generated content using EDS blocks
-      hideStatus(resultsContainer);
+      hideStatus(widget);
 
       if (generatedBlocks.length > 0) {
-        displayGeneratedContent(block, generatedBlocks).catch((error) => {
+        displayGeneratedContent(block, generatedBlocks).then(() => {
+          // Auto-collapse the widget after blocks render
+          widget.classList.add('collapsed');
+          widget.querySelector('.gen-log-toggle').innerHTML = '&#x2b;';
+        }).catch((error) => {
           console.error('Error rendering blocks:', error);
-          showStatus(resultsContainer, 'Error displaying content', 'error');
+          showStatus(widget, 'Error displaying content', 'error');
         });
       } else {
-        showStatus(resultsContainer, 'No content was generated', 'error');
+        showStatus(widget, 'No content was generated', 'error');
       }
     });
 
@@ -287,17 +310,17 @@ async function handleGeneration(query, resultsContainer, block) {
         // Error parsing error message
       }
 
-      showStatus(resultsContainer, errorMsg, 'error');
+      showStatus(widget, errorMsg, 'error');
       eventSource.close();
     });
 
     eventSource.onerror = () => {
-      showStatus(resultsContainer, 'Connection error. Please try again.', 'error');
+      showStatus(widget, 'Connection error. Please try again.', 'error');
       eventSource.close();
     };
 
   } catch (error) {
-    showStatus(resultsContainer, `Error: ${error.message}`, 'error');
+    showStatus(widget, `Error: ${error.message}`, 'error');
   }
 }
 
@@ -319,13 +342,12 @@ export default async function decorate(block) {
   // Create search interface
   const searchContainer = createSearchInterface(block);
 
-  // Create results container
-  const resultsContainer = createResultsContainer();
+  // Create floating log widget (appended to body, not the block)
+  const logWidget = createLogWidget();
 
   // Assemble block
   block.appendChild(titleEl);
   block.appendChild(searchContainer);
-  block.appendChild(resultsContainer);
 
   // Handle form submission
   const form = searchContainer.querySelector('.search-form');
@@ -343,7 +365,7 @@ export default async function decorate(block) {
     input.disabled = true;
 
     // Start generation (pass block element for content replacement)
-    handleGeneration(query, resultsContainer, block).catch((error) => {
+    handleGeneration(query, logWidget, block).catch((error) => {
       console.error('Generation error:', error);
       // Re-enable form on error
       button.disabled = false;
