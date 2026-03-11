@@ -240,6 +240,78 @@
   border-color: var(--color-charcoal);
 }
 
+/* Generated Content Display */
+.generative-search .generated-content {
+  margin-top: var(--spacing-600);
+  text-align: left;
+}
+
+.generative-search .generated-content h1,
+.generative-search .generated-content h2,
+.generative-search .generated-content h3 {
+  font-family: var(--heading-font-family);
+  color: var(--color-charcoal);
+  margin-top: var(--spacing-500);
+  margin-bottom: var(--spacing-300);
+}
+
+.generative-search .generated-content h1 {
+  font-size: var(--heading-size-xxl);
+  line-height: var(--line-height-m);
+}
+
+.generative-search .generated-content h2 {
+  font-size: var(--heading-size-l);
+}
+
+.generative-search .generated-content h3 {
+  font-size: var(--heading-size-m);
+}
+
+.generative-search .generated-content p {
+  margin-bottom: var(--spacing-300);
+  line-height: var(--line-height-l);
+}
+
+.generative-search .generated-content ul {
+  margin-bottom: var(--spacing-300);
+  padding-left: var(--spacing-500);
+}
+
+.generative-search .generated-content li {
+  margin-bottom: var(--spacing-100);
+  line-height: var(--line-height-l);
+}
+
+.generative-search .generated-content-actions {
+  margin-top: var(--spacing-700);
+  padding-top: var(--spacing-500);
+  border-top: var(--border-s) solid var(--color-gray-300);
+  text-align: center;
+}
+
+.generative-search .generated-content-actions .button {
+  padding: 17px 36px;
+  font-family: var(--body-font-family);
+  font-size: 0.875rem;
+  font-weight: normal;
+  line-height: var(--line-height-s);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-gray);
+  background-color: var(--color-white);
+  border: var(--border-s) solid var(--color-gray);
+  border-radius: var(--rounding-s);
+  cursor: pointer;
+  transition: background-color 0.4s, border-color 0.4s, color 0.4s;
+}
+
+.generative-search .generated-content-actions .button:hover {
+  background-color: var(--color-gray);
+  color: var(--color-white);
+  border-color: var(--color-gray);
+}
+
 /* Responsive Design */
 @media (width < 600px) {
   .generative-search {

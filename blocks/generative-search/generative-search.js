@@ -120,38 +120,37 @@ function addGenerationEvent(container, eventType, eventData) {
 }
 
 /**
- * Displays the generated content preview
- * @param {HTMLElement} container - Results container
- * @param {object} data - Generated content data
+ * Displays the generated content directly on the page
+ * @param {HTMLElement} block - The main block element
+ * @param {string} html - Generated HTML content
  */
-function displayGeneratedContent(container, data) {
-  const previewEl = container.querySelector('.content-preview');
-  previewEl.classList.remove('hidden');
+function displayGeneratedContent(block, html) {
+  // Clear the block completely
+  block.innerHTML = '';
 
-  const { slug, html, url } = data;
+  // Create a container for the generated content
+  const contentContainer = document.createElement('div');
+  contentContainer.className = 'generated-content';
+  contentContainer.innerHTML = html;
 
-  previewEl.innerHTML = `
-    <h3>Generated Page Preview</h3>
-    <div class="preview-meta">
-      <p><strong>URL:</strong> <code>${slug || 'N/A'}</code></p>
-      ${url ? `<p><strong>Published:</strong> <a href="${url}" target="_blank">${url}</a></p>` : ''}
-    </div>
-    <div class="preview-content">
-      ${html ? `<div class="html-preview">${html.substring(0, 500)}...</div>` : '<p>Content generated successfully</p>'}
-    </div>
-    <div class="preview-actions">
-      ${url ? `<button class="button-primary" onclick="window.open('${url}', '_blank')">View Page</button>` : ''}
-      <button class="button-secondary" onclick="location.reload()">New Search</button>
-    </div>
+  // Add a "New Search" button at the bottom
+  const actionBar = document.createElement('div');
+  actionBar.className = 'generated-content-actions';
+  actionBar.innerHTML = `
+    <button class="button" onclick="location.reload()">New Search</button>
   `;
+
+  block.appendChild(contentContainer);
+  block.appendChild(actionBar);
 }
 
 /**
  * Handles Server-Sent Events (SSE) from the generation API
  * @param {string} query - User query
  * @param {HTMLElement} resultsContainer - Results container element
+ * @param {HTMLElement} block - The main block element
  */
-async function handleGeneration(query, resultsContainer) {
+async function handleGeneration(query, resultsContainer, block) {
   resultsContainer.classList.remove('hidden');
 
   // Clear previous results
@@ -159,6 +158,9 @@ async function handleGeneration(query, resultsContainer) {
   resultsContainer.querySelector('.content-preview').classList.add('hidden');
 
   showStatus(resultsContainer, 'Starting generation...', 'loading');
+
+  // Variable to store the generated HTML
+  let generatedHTML = '';
 
   try {
     // Build API URL with query parameter
@@ -183,21 +185,39 @@ async function handleGeneration(query, resultsContainer) {
     eventSource.addEventListener('blocks', (event) => {
       const data = JSON.parse(event.data);
       addGenerationEvent(resultsContainer, 'blocks', data);
-      showStatus(resultsContainer, 'Selecting page components...', 'loading');
+      showStatus(resultsContainer, 'Generating content blocks...', 'loading');
+    });
+
+    eventSource.addEventListener('block', (event) => {
+      const data = JSON.parse(event.data);
+      addGenerationEvent(resultsContainer, 'block', data);
+      showStatus(resultsContainer, 'Building your page...', 'loading');
     });
 
     eventSource.addEventListener('content', (event) => {
       const data = JSON.parse(event.data);
       addGenerationEvent(resultsContainer, 'content', data);
-      showStatus(resultsContainer, `Generating ${data.blockType || 'content'}...`, 'loading');
+      showStatus(resultsContainer, 'Finalizing content...', 'loading');
+
+      // Store the generated HTML
+      generatedHTML = data.html || '';
     });
 
     eventSource.addEventListener('complete', (event) => {
       const data = JSON.parse(event.data);
       addGenerationEvent(resultsContainer, 'complete', data);
-      hideStatus(resultsContainer);
-      displayGeneratedContent(resultsContainer, data);
+
+      // Close the event source
       eventSource.close();
+
+      // Hide loading status and display generated content
+      hideStatus(resultsContainer);
+
+      if (generatedHTML) {
+        displayGeneratedContent(block, generatedHTML);
+      } else {
+        showStatus(resultsContainer, 'No content was generated', 'error');
+      }
     });
 
     eventSource.addEventListener('error', (event) => {
@@ -264,9 +284,10 @@ export default async function decorate(block) {
     button.disabled = true;
     input.disabled = true;
 
-    // Start generation
-    handleGeneration(query, resultsContainer).finally(() => {
-      // Re-enable form
+    // Start generation (pass block element for content replacement)
+    handleGeneration(query, resultsContainer, block).catch((error) => {
+      console.error('Generation error:', error);
+      // Re-enable form on error
       button.disabled = false;
       input.disabled = false;
     });
