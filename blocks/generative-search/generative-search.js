@@ -182,6 +182,7 @@ async function displayGeneratedContent(block, generatedBlocks) {
   actionWrapper.style.padding = 'var(--spacing-600) 0';
   const reloadLink = document.createElement('p');
   reloadLink.className = 'button-wrapper';
+  reloadLink.style.justifyContent = 'center';
   reloadLink.innerHTML = '<a class="button secondary" href="#">New Search</a>';
   reloadLink.querySelector('a').addEventListener('click', (e) => {
     e.preventDefault();
