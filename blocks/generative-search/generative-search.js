@@ -366,12 +366,11 @@ async function handleGeneration(query, widget, block, pipelineId) {
  */
 async function fetchPipelines() {
   try {
-    const resp = await fetch(new URL('/admin/api/config/pipelines', API_BASE_URL));
+    const resp = await fetch(new URL('/pipelines', API_BASE_URL));
     if (resp.ok) {
-      const data = await resp.json();
-      const pipelines = data.value || data;
+      const pipelines = await resp.json();
       if (Array.isArray(pipelines) && pipelines.length > 0) {
-        return pipelines.filter((p) => p.enabled !== false);
+        return pipelines;
       }
     }
   } catch (e) {
