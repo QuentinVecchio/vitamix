@@ -9,13 +9,22 @@ import { buildBlock, decorateBlock, loadBlock } from '../../scripts/aem.js';
 // API Configuration
 const API_BASE_URL = 'https://vitamix-gen-service.franklin-prod.workers.dev';
 
+// Known pipelines (fallback when API is unreachable)
+const KNOWN_PIPELINES = [
+  { id: 'default', label: 'Default Pipeline' },
+];
+
 /**
  * Creates the search interface
  * @param {HTMLElement} block - The block element
  */
-function createSearchInterface(block) {
+function createSearchInterface(block, pipelines) {
   const searchContainer = document.createElement('div');
   searchContainer.className = 'search-container';
+
+  const pipelineOptions = pipelines
+    .map((p) => `<option value="${p.id}">${p.label}</option>`)
+    .join('');
 
   searchContainer.innerHTML = `
     <form class="search-form">
@@ -30,6 +39,17 @@ function createSearchInterface(block) {
         Generate
       </button>
     </form>
+    <details class="debug-panel">
+      <summary>Debug Options</summary>
+      <div class="debug-options">
+        <label class="debug-label">
+          Pipeline
+          <select class="pipeline-select" aria-label="Select pipeline">
+            ${pipelineOptions}
+          </select>
+        </label>
+      </div>
+    </details>
   `;
 
   return searchContainer;
@@ -115,17 +135,25 @@ function addGenerationEvent(widget, eventType, eventData) {
   // Format event data based on type
   let eventText = '';
   switch (eventType) {
-    case 'intent':
-      eventText = `<strong>Intent detected:</strong> ${eventData.intent || 'Processing...'}`;
+    case 'intent': {
+      const parts = [];
+      if (eventData.pipeline) parts.push(`Pipeline: ${eventData.pipeline.label}`);
+      if (eventData.classificationEngine) parts.push(`Classify: ${eventData.classificationEngine.label}`);
+      if (eventData.generationEngine) parts.push(`Generate: ${eventData.generationEngine.label}`);
+      eventText = `<strong>Pipeline:</strong> ${parts.join(' &middot; ') || 'Analyzing...'}`;
       break;
+    }
     case 'classification':
-      eventText = `<strong>Category:</strong> ${eventData.category || 'Classifying...'}`;
+      eventText = `<strong>Classification:</strong> ${eventData.intent || '?'} / ${eventData.category || '?'} (${Math.round((eventData.confidence || 0) * 100)}%)`;
       break;
     case 'blocks':
       eventText = `<strong>Blocks selected:</strong> ${eventData.blocks?.join(', ') || 'Selecting...'}`;
       break;
+    case 'block':
+      eventText = `<strong>Block:</strong> ${eventData.type || 'rendering...'}`;
+      break;
     case 'content':
-      eventText = `<strong>Content generated:</strong> ${eventData.blockType || 'Generating...'}`;
+      eventText = `<strong>Content ready:</strong> ${eventData.blocks?.length || 0} blocks`;
       break;
     case 'complete':
       eventText = `<strong>Generation complete</strong> - Page ready`;
@@ -223,8 +251,9 @@ async function displayGeneratedContent(block, generatedBlocks) {
  * @param {string} query - User query
  * @param {HTMLElement} widget - The floating log widget
  * @param {HTMLElement} block - The main block element
+ * @param {string} [pipelineId] - Optional pipeline ID
  */
-async function handleGeneration(query, widget, block) {
+async function handleGeneration(query, widget, block, pipelineId) {
   widget.classList.remove('hidden');
   widget.classList.remove('collapsed');
 
@@ -240,6 +269,9 @@ async function handleGeneration(query, widget, block) {
     // Build API URL with query parameter
     const apiUrl = new URL('/generate', API_BASE_URL);
     apiUrl.searchParams.set('q', query);
+    if (pipelineId) {
+      apiUrl.searchParams.set('pipeline', pipelineId);
+    }
 
     // Create EventSource for SSE
     const eventSource = new EventSource(apiUrl.toString());
@@ -328,6 +360,26 @@ async function handleGeneration(query, widget, block) {
  * Decorates the generative search block
  * @param {HTMLElement} block - The block element
  */
+/**
+ * Fetches available pipelines from the API config
+ * @returns {Promise<Array>} Array of pipeline objects
+ */
+async function fetchPipelines() {
+  try {
+    const resp = await fetch(new URL('/admin/api/config/pipelines', API_BASE_URL));
+    if (resp.ok) {
+      const data = await resp.json();
+      const pipelines = data.value || data;
+      if (Array.isArray(pipelines) && pipelines.length > 0) {
+        return pipelines.filter((p) => p.enabled !== false);
+      }
+    }
+  } catch (e) {
+    console.warn('[generative-search] Could not fetch pipelines, using defaults', e);
+  }
+  return KNOWN_PIPELINES;
+}
+
 export default async function decorate(block) {
   // Get optional title from block content BEFORE clearing
   const title = block.textContent.trim() || 'AI-Powered Content Generator';
@@ -335,12 +387,15 @@ export default async function decorate(block) {
   // Clear existing content
   block.innerHTML = '';
 
+  // Fetch available pipelines (non-blocking, falls back to defaults)
+  const pipelines = await fetchPipelines();
+
   // Create title
   const titleEl = document.createElement('h2');
   titleEl.textContent = title;
 
-  // Create search interface
-  const searchContainer = createSearchInterface(block);
+  // Create search interface with pipeline selector
+  const searchContainer = createSearchInterface(block, pipelines);
 
   // Create floating log widget (appended to body, not the block)
   const logWidget = createLogWidget();
@@ -353,6 +408,7 @@ export default async function decorate(block) {
   const form = searchContainer.querySelector('.search-form');
   const input = searchContainer.querySelector('.search-input');
   const button = searchContainer.querySelector('.search-button');
+  const pipelineSelect = searchContainer.querySelector('.pipeline-select');
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -360,12 +416,14 @@ export default async function decorate(block) {
     const query = input.value.trim();
     if (!query) return;
 
+    const selectedPipeline = pipelineSelect.value;
+
     // Disable form during generation
     button.disabled = true;
     input.disabled = true;
 
-    // Start generation (pass block element for content replacement)
-    handleGeneration(query, logWidget, block).catch((error) => {
+    // Start generation with selected pipeline
+    handleGeneration(query, logWidget, block, selectedPipeline).catch((error) => {
       console.error('Generation error:', error);
       // Re-enable form on error
       button.disabled = false;

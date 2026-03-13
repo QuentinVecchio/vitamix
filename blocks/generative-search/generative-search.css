@@ -93,6 +93,57 @@
   opacity: 0.6;
 }
 
+/* Debug Panel */
+.generative-search .debug-panel {
+  margin-top: var(--spacing-200);
+  text-align: left;
+}
+
+.generative-search .debug-panel summary {
+  cursor: pointer;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-gray-800);
+  user-select: none;
+  text-align: center;
+}
+
+.generative-search .debug-panel summary:hover {
+  color: var(--color-charcoal);
+}
+
+.generative-search .debug-options {
+  display: flex;
+  gap: var(--spacing-300);
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: var(--spacing-200);
+  padding: var(--spacing-300);
+  background-color: var(--color-gray-100);
+  border: 1px solid var(--color-gray-300);
+  border-radius: var(--rounding-s);
+}
+
+.generative-search .debug-label {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-100);
+  font-size: 0.8rem;
+  color: var(--color-charcoal);
+  font-family: var(--body-font-family);
+}
+
+.generative-search .pipeline-select {
+  padding: 6px 10px;
+  font-family: var(--body-font-family);
+  font-size: 0.8rem;
+  border: 1px solid var(--color-gray-400);
+  border-radius: var(--rounding-s);
+  background-color: var(--color-white);
+  color: var(--color-charcoal);
+}
+
 /* Floating Generation Log Widget */
 .gen-log-widget {
   position: fixed;
