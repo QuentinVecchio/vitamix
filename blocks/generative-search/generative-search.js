@@ -7,7 +7,7 @@
 import { buildBlock, decorateBlock, loadBlock } from '../../scripts/aem.js';
 
 // API Configuration
-const API_BASE_URL = 'https://vitamix-gen-service.franklin-prod.workers.dev';
+const API_BASE_URL = 'https://web-gen-service.franklin-prod.workers.dev';
 
 // Known pipelines (fallback when API is unreachable)
 const KNOWN_PIPELINES = [
