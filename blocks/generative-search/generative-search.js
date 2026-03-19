@@ -8,21 +8,17 @@ import { buildBlock, decorateBlock, loadBlock } from '../../scripts/aem.js';
 
 // API Configuration
 const API_BASE_URL = 'https://web-gen-service.franklin-prod.workers.dev';
-
-// Known pipelines (fallback when API is unreachable)
-const KNOWN_PIPELINES = [
-  { id: 'default', label: 'Default Pipeline' },
-];
+const TENANT_ID = 'vitamix';
 
 /**
  * Creates the search interface
  * @param {HTMLElement} block - The block element
  */
-function createSearchInterface(block, pipelines) {
+function createSearchInterface(block, flows) {
   const searchContainer = document.createElement('div');
   searchContainer.className = 'search-container';
 
-  const pipelineOptions = pipelines
+  const flowOptions = flows
     .map((p) => `<option value="${p.id}">${p.label}</option>`)
     .join('');
 
@@ -43,9 +39,9 @@ function createSearchInterface(block, pipelines) {
       <summary>Debug Options</summary>
       <div class="debug-options">
         <label class="debug-label">
-          Pipeline
-          <select class="pipeline-select" aria-label="Select pipeline">
-            ${pipelineOptions}
+          Flow
+          <select class="flow-select" aria-label="Select flow">
+            ${flowOptions}
           </select>
         </label>
       </div>
@@ -137,14 +133,14 @@ function addGenerationEvent(widget, eventType, eventData) {
   switch (eventType) {
     case 'intent': {
       const parts = [];
-      if (eventData.pipeline) parts.push(`Pipeline: ${eventData.pipeline.label}`);
+      if (eventData.pipeline) parts.push(`${eventData.pipeline.label}`);
       if (eventData.classificationEngine) parts.push(`Classify: ${eventData.classificationEngine.label}`);
       if (eventData.generationEngine) parts.push(`Generate: ${eventData.generationEngine.label}`);
-      eventText = `<strong>Pipeline:</strong> ${parts.join(' &middot; ') || 'Analyzing...'}`;
+      eventText = `<strong>Flow:</strong> ${parts.join(' &middot; ') || 'Analyzing...'}`;
       break;
     }
     case 'classification':
-      eventText = `<strong>Classification:</strong> ${eventData.intent || '?'} / ${eventData.category || '?'} (${Math.round((eventData.confidence || 0) * 100)}%)`;
+      eventText = `<strong>Context:</strong> ${eventData.context || '?'} / ${eventData.category || '?'} (${Math.round((eventData.confidence || 0) * 100)}%)`;
       break;
     case 'blocks':
       eventText = `<strong>Blocks selected:</strong> ${eventData.blocks?.join(', ') || 'Selecting...'}`;
@@ -251,9 +247,9 @@ async function displayGeneratedContent(block, generatedBlocks) {
  * @param {string} query - User query
  * @param {HTMLElement} widget - The floating log widget
  * @param {HTMLElement} block - The main block element
- * @param {string} [pipelineId] - Optional pipeline ID
+ * @param {string} [flowId] - Optional flow ID
  */
-async function handleGeneration(query, widget, block, pipelineId) {
+async function handleGeneration(query, widget, block, flowId) {
   widget.classList.remove('hidden');
   widget.classList.remove('collapsed');
 
@@ -268,9 +264,10 @@ async function handleGeneration(query, widget, block, pipelineId) {
   try {
     // Build API URL with query parameter
     const apiUrl = new URL('/generate', API_BASE_URL);
+    apiUrl.searchParams.set('tenant', TENANT_ID);
     apiUrl.searchParams.set('q', query);
-    if (pipelineId) {
-      apiUrl.searchParams.set('pipeline', pipelineId);
+    if (flowId) {
+      apiUrl.searchParams.set('pipeline', flowId);
     }
 
     // Create EventSource for SSE
@@ -357,26 +354,22 @@ async function handleGeneration(query, widget, block, pipelineId) {
 }
 
 /**
- * Decorates the generative search block
- * @param {HTMLElement} block - The block element
+ * Fetches available flows from the API config
+ * @returns {Promise<Array>} Array of flow objects
  */
-/**
- * Fetches available pipelines from the API config
- * @returns {Promise<Array>} Array of pipeline objects
- */
-async function fetchPipelines() {
+async function fetchFlows() {
   try {
-    const resp = await fetch(new URL('/pipelines', API_BASE_URL));
+    const resp = await fetch(new URL(`/tenants/${TENANT_ID}/flows`, API_BASE_URL));
     if (resp.ok) {
-      const pipelines = await resp.json();
-      if (Array.isArray(pipelines) && pipelines.length > 0) {
-        return pipelines;
+      const flows = await resp.json();
+      if (Array.isArray(flows) && flows.length > 0) {
+        return flows;
       }
     }
   } catch (e) {
-    console.warn('[generative-search] Could not fetch pipelines, using defaults', e);
+    console.warn('[generative-search] Could not fetch flows', e);
   }
-  return KNOWN_PIPELINES;
+  return [];
 }
 
 export default async function decorate(block) {
@@ -386,15 +379,15 @@ export default async function decorate(block) {
   // Clear existing content
   block.innerHTML = '';
 
-  // Fetch available pipelines (non-blocking, falls back to defaults)
-  const pipelines = await fetchPipelines();
+  // Fetch available flows (non-blocking, falls back to empty array)
+  const flows = await fetchFlows();
 
   // Create title
   const titleEl = document.createElement('h2');
   titleEl.textContent = title;
 
-  // Create search interface with pipeline selector
-  const searchContainer = createSearchInterface(block, pipelines);
+  // Create search interface with flow selector
+  const searchContainer = createSearchInterface(block, flows);
 
   // Create floating log widget (appended to body, not the block)
   const logWidget = createLogWidget();
@@ -407,7 +400,7 @@ export default async function decorate(block) {
   const form = searchContainer.querySelector('.search-form');
   const input = searchContainer.querySelector('.search-input');
   const button = searchContainer.querySelector('.search-button');
-  const pipelineSelect = searchContainer.querySelector('.pipeline-select');
+  const flowSelect = searchContainer.querySelector('.flow-select');
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -415,14 +408,14 @@ export default async function decorate(block) {
     const query = input.value.trim();
     if (!query) return;
 
-    const selectedPipeline = pipelineSelect.value;
+    const selectedFlow = flowSelect.value;
 
     // Disable form during generation
     button.disabled = true;
     input.disabled = true;
 
-    // Start generation with selected pipeline
-    handleGeneration(query, logWidget, block, selectedPipeline).catch((error) => {
+    // Start generation with selected flow
+    handleGeneration(query, logWidget, block, selectedFlow).catch((error) => {
       console.error('Generation error:', error);
       // Re-enable form on error
       button.disabled = false;
